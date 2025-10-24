@@ -1,0 +1,180 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <title>Mini Red Social</title>
+  <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+<body>
+  <header>
+    <h1>Mi Mini Red Social</h1>
+    <nav>
+      <span>Notificaciones: <span id="contadorNoti">0</span></span>
+    </nav>
+  </header>
+
+  <main>
+    <!-- Formulario para crear post -->
+    <section id="crearPost">
+      <h2>Crear nuevo post</h2>
+      <form id="formPost" enctype="multipart/form-data">
+        <textarea name="texto" id="textoPost" placeholder="Escribe tu post..." required></textarea>
+        <input type="file" name="imagen" id="imagenPost" accept="image/*">
+        <button type="submit">Publicar</button>
+      </form>
+    </section>
+
+    <!-- Feed de todos los posts -->
+    <section id="feed">
+      <h2>Feed de Posts</h2>
+      <ul id="listaPosts"></ul>
+    </section>
+
+    <!-- Feed de usuarios seguidos -->
+    <section id="feedSeguidos">
+      <h2>Posts de personas que sigo</h2>
+      <ul id="listaFeedSeguidos"></ul>
+    </section>
+
+    <!-- Mis posts -->
+    <section id="perfil">
+      <h2>Mi Perfil</h2>
+      <ul id="misPosts"></ul>
+    </section>
+  </main>
+
+  <script>
+  const miId = '68f2b14062397e6e3b7f047d'; 
+  const socket = io('http://localhost:3000');
+
+  const contadorNoti = document.getElementById('contadorNoti');
+  const listaNotificaciones = document.createElement('ul');
+  document.body.appendChild(listaNotificaciones);
+  let contador = 0;
+
+  // Escuchar notificaciones en tiempo real
+  socket.on(`notificacion-${miId}`, (data) => {
+    contador++;
+    contadorNoti.textContent = contador;
+
+    const li = document.createElement('li');
+    li.textContent = `${data.tipo}: ${data.mensaje}`;
+    listaNotificaciones.appendChild(li);
+  });
+
+  // Función para cargar posts
+  async function cargarPosts() {
+    try {
+      const res = await fetch('http://localhost:3000/api/posts');
+      const posts = await res.json();
+
+      if (!Array.isArray(posts)) {
+        console.error('No se recibieron posts:', posts);
+        return;
+      }
+
+      const listaPosts = document.getElementById('listaPosts');
+      const misPosts = document.getElementById('misPosts');
+
+      listaPosts.innerHTML = '';
+      misPosts.innerHTML = '';
+
+      posts.forEach(post => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+          <strong>${post.autor ? post.autor.nombre : 'Usuario desconocido'}</strong>: ${post.texto} <br>
+          ${post.imagen ? `<img src="http://localhost:3000${post.imagen}" width="200">` : ''}
+          Likes: ${post.likes} <button onclick="darLike('${post._id}')">Like</button>
+        `;
+        listaPosts.appendChild(li);
+
+        if(post.autor && post.autor._id === miId) {
+          const li2 = li.cloneNode(true);
+          misPosts.appendChild(li2);
+        }
+      });
+    } catch(error) {
+      console.error('Error al cargar posts:', error);
+    }
+  }
+
+  // Función para cargar feed de seguidos
+  async function cargarFeedSeguidos() {
+    try {
+      const res = await fetch(`http://localhost:3000/api/posts/feed/${miId}`);
+      const posts = await res.json();
+
+      if (!Array.isArray(posts)) {
+        console.error('No se recibieron posts de seguidos:', posts);
+        return;
+      }
+
+      const listaFeed = document.getElementById('listaFeedSeguidos');
+      listaFeed.innerHTML = '';
+
+      posts.forEach(post => {
+        const li = document.createElement('li');
+        li.innerHTML = `
+          <strong>${post.autor ? post.autor.nombre : 'Usuario desconocido'}</strong>: ${post.texto} <br>
+          ${post.imagen ? `<img src="http://localhost:3000${post.imagen}" width="200">` : ''}
+          Likes: ${post.likes} <button onclick="darLike('${post._id}')">Like</button>
+        `;
+        listaFeed.appendChild(li);
+      });
+    } catch(error) {
+      console.error('Error al cargar feed de seguidos:', error);
+    }
+  }
+
+  // Función para dar like
+  async function darLike(postId) {
+    try {
+      await fetch(`http://localhost:3000/api/posts/${postId}/like`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: miId })
+      });
+      cargarPosts();
+      cargarFeedSeguidos();
+    } catch(error) {
+      console.error('Error al dar like:', error);
+    }
+  }
+
+  // Crear post
+  const formPost = document.getElementById('formPost');
+  formPost.addEventListener('submit', async (e) => {
+    e.preventDefault();
+
+    const formData = new FormData();
+    formData.append('texto', document.getElementById('textoPost').value);
+    formData.append('autor', miId);
+    const imagen = document.getElementById('imagenPost').files[0];
+    if(imagen) formData.append('imagen', imagen);
+
+    try {
+      const res = await fetch('http://localhost:3000/api/posts', {
+        method: 'POST',
+        body: formData
+      });
+      const data = await res.json();
+      if(res.ok) {
+        alert('Post creado correctamente');
+        formPost.reset();
+        cargarPosts();
+        cargarFeedSeguidos();
+      } else {
+        alert(data.mensaje || 'Error al crear post');
+      }
+    } catch(error) {
+      console.error('Error al crear post:', error);
+    }
+  });
+
+  // Cargar posts al inicio
+  cargarPosts();
+  cargarFeedSeguidos();
+</script>
+
+</body>
+</html>
