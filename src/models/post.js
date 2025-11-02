@@ -5,6 +5,7 @@ const postSchema = new mongoose.Schema({
   texto: { type: String, required: true },
   imagen: { type: String },
   likes: { type: Number, default: 0 },
+  usuariosLike: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Usuario' }], // Lista de usuarios que dieron like
   fecha: { type: Date, default: Date.now },
   fechaCreacion: { type: Date, default: Date.now }
 });

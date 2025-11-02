@@ -1,6 +1,7 @@
 const mongoose = require('mongoose');
 const Post = require('../models/post');
 const User = require('../models/user');
+const Notificacion = require('../models/notificacion');
 
 // Crear un nuevo post
 exports.crearPost = async (req, res) => {
@@ -64,15 +65,33 @@ exports.actualizarPost = async (req, res) => {
 // Eliminar un post
 exports.eliminarPost = async (req, res) => {
   try {
-    const { id } = req.params;
-    const postEliminado = await Post.findByIdAndDelete(id);
-    if (!postEliminado) return res.status(404).json({ mensaje: 'Post no encontrado' });
+    const { id } = req.params; // ID del post
+    const userId = req.body.userId;
+    
+    if (!req.body || !req.body.userId) {
+      return res.status(400).json({ mensaje: 'Se requiere el userId para eliminar el post' });
+    }
+
+    const post = await Post.findById(id);
+    if (!post) {
+      return res.status(404).json({ mensaje: 'Post no encontrado' });
+    }
+
+    // Verificar si el usuario es el autor del post
+    if (post.autor.toString() !== userId) {
+      return res.status(403).json({ mensaje: 'No tienes permiso para eliminar este post' });
+    }
+
+    await Post.findByIdAndDelete(id);
 
     res.json({ mensaje: 'Post eliminado correctamente' });
+
   } catch (error) {
+    console.error('Error al eliminar el post:', error);
     res.status(500).json({ mensaje: 'Error al eliminar el post', error: error.message });
   }
 };
+
 
 // Dar like a un post
 exports.darLikePost = async (req, res) => {
@@ -80,36 +99,76 @@ exports.darLikePost = async (req, res) => {
     const { id } = req.params; // id del post
     const { userId } = req.body; // id del usuario que da like
 
+    if (!userId) {
+      return res.status(400).json({ mensaje: 'Se requiere el userId para dar like' });
+    }
+
     const post = await Post.findById(id);
     if (!post) {
       return res.status(404).json({ mensaje: 'Post no encontrado' });
     }
 
-    // Incrementa likes
-    post.likes += 1;
-    await post.save();
-
-    // Emitir notificación en tiempo real al autor del post
     const io = req.app.get('io');
-    if(io){
-      const usuario = await User.findById(userId); // buscamos el usuario que dio like
-      io.emit(`notificacion-${post.autor}`, {
-      tipo: 'like',
-      mensaje: `Tu post recibió un like de ${usuario.nombre}`, // ahora muestra el nombre
-      postId: post._id,
-      fromUserId: userId
-    });
 
-  } else{
-    console.log('Socket.io no está disponible, no se puede enviar notificación');
+    // Si el usuario ya dio like → quitarlo
+    if (post.usuariosLike.includes(userId)) {
+      post.likes -= 1;
+      post.usuariosLike = post.usuariosLike.filter(uid => uid.toString() !== userId);
+      await post.save();
+
+      // Eliminar la notificación relacionada (si existe)
+      await Notificacion.findOneAndDelete({
+        emisor: userId,
+        receptor: post.autor,
+        post: post._id,
+        tipo: 'like'
+      });
+
+      if (io) {
+        io.to(post.autor.toString()).emit("notificacion", {
+          tipo: "like",
+          accion: "unlike",
+          postId: post._id,
+          fromUserId: userId,
+        });
+      }
+
+      return res.json({ mensaje: "Like removido", likes: post.likes });
     }
 
-    res.json({
-      mensaje: 'Like agregado', likes: post.likes});
+    // Si el usuario NO ha dado like → agregarlo
+    post.likes += 1;
+    post.usuariosLike.push(userId);
+    await post.save();
+
+    // Crear la notificación persistente
+    if (post.autor.toString() !== userId.toString()) {
+      await Notificacion.create({
+        receptor: post.autor,
+        emisor: userId,
+        post: post._id,
+        tipo: "like",
+      });
+
+      // Emitir evento de notificación al autor del post
+      if (io) {
+        io.to(post.autor.toString()).emit("notificacion", {
+          tipo: "like",
+          accion: "like",
+          postId: post._id,
+          fromUserId: userId,
+        });
+      }
+    }
+
+    return res.json({ mensaje: "Like agregado", likes: post.likes });
+
   } catch (error) {
-    res.status(500).json({ mensaje: 'Error al dar like', error: error.message });
+    console.error("Error al dar like:", error);
+    res.status(500).json({ mensaje: "Error al dar like al post" });
   }
 };
+
 
 // Obtener posts de los usuarios que sigo
 exports.obtenerPostsSeguidos = async (req, res) => {

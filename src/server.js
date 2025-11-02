@@ -26,6 +26,9 @@ app.use('/api/users', userRoutes);
 const postRoutes = require('./routes/postRoutes');
 app.use('/api/posts', postRoutes);
 
+const notificacionRoutes = require('./routes/notificacionRoutes');
+app.use('/api/notificacion', notificacionRoutes);
+
 // Ruta de prueba
 app.get('/', (req, res) => {
   res.send('Servidor corriendo');
@@ -43,14 +46,37 @@ const io = new Server(server, {
 // Guardamos io en app para usarlo en los controladores
 app.set('io', io);
 
-// Conexión de clientes
+// Mapa de usuarios conectados: userId -> socketId
+const usuariosConectados = new Map();
+
 io.on('connection', (socket) => {
   console.log('Nuevo cliente conectado:', socket.id);
 
+  // Escuchamos cuando el cliente nos envía su userId
+  socket.on('registrarUsuario', (userId) => {
+    if (userId) {
+      usuariosConectados.set(userId, socket.id);
+      console.log(`Usuario ${userId} registrado con socket ${socket.id}`);
+    }
+  });
+
+  // Cuando el usuario se desconecta, lo quitamos del mapa
   socket.on('disconnect', () => {
+    for (const [userId, id] of usuariosConectados.entries()) {
+      if (id === socket.id) {
+        usuariosConectados.delete(userId);
+        console.log(`Usuario ${userId} desconectado`);
+        break;
+      }
+    }
     console.log('Cliente desconectado:', socket.id);
   });
 });
+
+// Guardar referencias globales
+app.set('io', io);
+app.set('usuariosConectados', usuariosConectados);
+
 
 // Levantar servidor y manejar la conexión a la base de datos antes
 (async () => {

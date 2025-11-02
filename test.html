@@ -54,13 +54,37 @@
 
   // Escuchar notificaciones en tiempo real
   socket.on(`notificacion-${miId}`, (data) => {
-    contador++;
-    contadorNoti.textContent = contador;
+  const texto = `${data.tipo}: ${data.mensaje}`;
 
-    const li = document.createElement('li');
-    li.textContent = `${data.tipo}: ${data.mensaje}`;
-    listaNotificaciones.appendChild(li);
-  });
+  // Si la acción fue dar like → agregar notificación
+  if (data.accion === 'like' || !data.accion) {
+    const yaExiste = Array.from(listaNotificaciones.children)
+      .some(li => li.textContent === texto);
+
+    if (!yaExiste) {
+      const li = document.createElement('li');
+      li.textContent = texto;
+      li.dataset.postId = data.postId; // para poder identificarla luego
+      listaNotificaciones.appendChild(li);
+
+      contador++;
+      contadorNoti.textContent = contador;
+    }
+  }
+
+  // Si el usuario quitó su like → eliminar la notificación
+  if (data.accion === 'unlike') {
+    const liEliminar = Array.from(listaNotificaciones.children)
+      .find(li => li.dataset.postId === data.postId);
+
+    if (liEliminar) {
+      liEliminar.remove();
+      contador = Math.max(0, contador - 1);
+      contadorNoti.textContent = contador;
+    }
+  }
+});
+
 
   // Función para cargar posts
   async function cargarPosts() {
@@ -80,19 +104,23 @@
       misPosts.innerHTML = '';
 
       posts.forEach(post => {
-        const li = document.createElement('li');
-        li.innerHTML = `
-          <strong>${post.autor ? post.autor.nombre : 'Usuario desconocido'}</strong>: ${post.texto} <br>
-          ${post.imagen ? `<img src="http://localhost:3000${post.imagen}" width="200">` : ''}
-          Likes: ${post.likes} <button onclick="darLike('${post._id}')">Like</button>
-        `;
-        listaPosts.appendChild(li);
+      const li = document.createElement('li');
+      li.id = `post-${post._id}`; // id del post para relacionar notificaciones
+      li.innerHTML = `
+        <strong>${post.autor ? post.autor.nombre : 'Usuario desconocido'}</strong>: ${post.texto} <br>
+        ${post.imagen ? `<img src="http://localhost:3000${post.imagen}" width="200">` : ''}
+        Likes: <span id="likes-${post._id}">${post.likes}</span> 
+        <button onclick="darLike('${post._id}')">Like</button>
+        <ul id="noti-post-${post._id}"></ul> <!-- Contenedor de notificaciones del post -->
+      `;
+      listaPosts.appendChild(li);
 
-        if(post.autor && post.autor._id === miId) {
-          const li2 = li.cloneNode(true);
-          misPosts.appendChild(li2);
-        }
-      });
+      if(post.autor && post.autor._id === miId) {
+        const li2 = li.cloneNode(true);
+        misPosts.appendChild(li2);
+      }
+    });
+
     } catch(error) {
       console.error('Error al cargar posts:', error);
     }

@@ -1,7 +1,7 @@
 const express = require('express');
 const Post = require('../models/post');
 const router = express.Router();
-const upload = require('../middleware/upload'); // importamos Multer
+const upload = require('../middleware/upload');
 const path = require('path');
 const postController = require('../controllers/postController');
 
@@ -28,7 +28,6 @@ router.delete('/:id', postController.eliminarPost);
 router.post('/:id/like', postController.darLikePost);
 // Obtener feed de usuarios que sigo
 router.get('/feed/:userId', postController.obtenerPostsSeguidos);
-
 
 
 module.exports = router;
